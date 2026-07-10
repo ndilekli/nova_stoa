@@ -1,0 +1,795 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,500;1,9..144,400&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <style>
+    :root {
+      --stone: #EDE8DC; 
+      --ink: #2B271F; 
+      --ink-soft: #5B5548;
+      --bronze: #6B7A5E; 
+      --clay: #9C5A28; 
+      --indigo: #3B4353;
+    }
+
+    * {
+      box-sizing: border-box; 
+      margin: 0; 
+      padding: 0;
+    }
+
+    html, body {
+      height: 100%; 
+      overflow: hidden;
+    }
+
+    body { 
+      background: var(--stone); 
+      color: var(--ink); 
+      font-family: 'Inter', sans-serif; 
+    }
+
+    #overlay {
+      position: fixed; 
+      top: 0; 
+      left: 0; 
+      width: 100%; 
+      padding: 26px 28px; 
+      z-index: 10;
+      pointer-events: none; 
+      text-align: center;
+    }
+
+    .eyebrow {
+      font-size: 11.5px; 
+      letter-spacing: 0.18em; 
+      text-transform: uppercase;
+      color: var(--bronze); 
+      font-weight: 600; 
+      margin-bottom: 6px;
+    }
+
+    h1 {
+      font-family: 'Fraunces', serif; 
+      font-weight: 500; 
+      font-style: italic;
+      font-size: clamp(22px, 4vw, 30px); 
+      color: var(--ink);
+    }
+
+    #hint {
+      position: fixed; 
+      bottom: 22px; 
+      left: 0; 
+      width: 100%; 
+      text-align: center;
+      font-size: 12px; 
+      color: var(--ink-soft); 
+      letter-spacing: 0.03em; 
+      z-index: 10;
+    }
+
+    canvas {
+      display: block; 
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+
+  <script>
+    document.fonts.load('600 40px Inter')
+      .then(() => document.fonts.load('italic 500 40px Fraunces'))
+      .then(init)
+      .catch(init);
+
+    // ============================================================
+    // CONFIG — all the main tunables live here. Edit these values
+    // directly; everything below reads from this object.
+    // ============================================================
+    const CONFIG = {
+      // --- Fog (height-based — see the ShaderChunk override near the top of init()) ---
+      fogEnabled: true,        // set false to turn fog off entirely
+      fogColor:   0xEDE8DC,
+      fogHeightTop:    2,     // world-space Y above which there is NO fog at all
+      fogHeightBottom: -13,    // world-space Y at/below which fog is fully solid.
+                                // Narrow the gap between these two for a denser/faster fade;
+                                // widen it for a slow, gentle atmospheric fade.
+
+      // --- Ocean surface placement ---
+      oceanSurfaceY: -1.0,   // local-space Y of the water surface. Raise this (toward ~0.5)
+                            // to bring the surface closer to the Philosophy/Practice/
+                            // Consciousness axis; lower it (more negative) to push it deeper.
+
+      // --- Water surface (the flat, glinting plane at the waterline) ---
+      waterColor:      0x01415c,
+      waterOpacity:    0.95,
+      waterRoughness:  0.8,
+      waterMetalness:  0.65,
+
+      // --- Ripple/wave animation on the water surface ---
+      waveEnabled:   true,
+      waveAmplitude: 0.1,  // how tall the ripples are
+      waveFrequency: 0.8,   // spatial frequency — higher = smaller, tighter ripples
+      waveSpeed:     0.5,   // how fast the ripples animate
+
+      // --- Ocean depth wall (the big volumetric cylinder surrounding everything) ---
+      wallTopColor:        0x3E97BD,
+      wallBottomColor:     0x030A11,
+      wallOpacityShallow:  0.28,  // 0.0–1.0 — near the surface, helix should read through clearly
+      wallOpacityDeep:     0.97,  // 0.0–1.0 — near the ocean floor, nearly opaque
+      oceanWallRadius:     22,    // radius of the depth-wall cylinder
+
+      // --- Ocean surface disc (the flat, rippling plane at the waterline) ---
+      // This is a circular disc (not a rectangle), so turning the camera never reveals a
+      // straight edge/corner. Keep oceanSurfaceRadius >= oceanWallRadius so the disc's rim
+      // sits at/behind the depth wall rather than inside it.
+      oceanSurfaceRadius:    134,
+      oceanSurfaceRadialSegments:  60,   // rings from center to rim — more = smoother ripples
+      oceanSurfaceAngularSegments: 128,  // slices around the circle — more = rounder edge
+      oceanEdgeFadeStart:    0.75, // 0.0–1.0, fraction of oceanSurfaceRadius where the fade-out
+                                   // to the background begins. Lower = softer/wider blend,
+                                   // closer to 1.0 = fade only right at the very rim.
+
+      // --- Helix tube coloring/materials ---
+      tubeColorA: 0x6B7A5E, // green/bronze helix
+      tubeColorB: 0x9C5A28, // clay/orange helix
+      tubeRadius: 0.05,      // thickness of the two helix tubes — set equal to markerRadius
+                             // below for a flush, tangent look where they pass through the spheres
+      tubeOpaque: true,     // true = fully solid tube (darkening tint still applies below the waterline)
+                            // false = tube ALSO fades to transparent deep in the abyss, on top of darkening
+      tubeOpacity: 0.95,     // 0.0–1.0 — only used when tubeOpaque = false. Base transparency level
+                            // of the helix tubes before depth-tint/depth-fade are applied on top.
+      abyssTintColor: 0x050B10, // near-black tint color applied right at the waterline
+      tintDepth: 3.0,            // units below the surface until fully darkened (smaller = sharper transition)
+      fadeDepthPastFloor: 6,     // only used when tubeOpaque = false — units past ocean floor until fully invisible
+
+      // --- Markers & axis ---
+      markerRadius: 0.15,   // radius of the Practice/Philosophy sphere markers
+      axisRadius:   0.04,  // thickness of the axis connecting Philosophy–Consciousness–Practice
+
+      // --- Helix geometry ---
+      topTaper: 1.0,        // radius envelope above water. 1.0 = the two helices meet exactly
+                             // at Oikos's center; lower values (e.g. 0.92) leave a small visible gap.
+      spacingGrowth: 14.35,  // how much the vertical pitch loosens with depth (0 = perfectly regular)
+      radialGrowth: 3.6,     // how fast the spiral widens outward across X/Z as it descends (underwater only)
+    };
+
+    function makeLabel(text, color, fontSpec, w = 2.6, h = 0.65) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512; 
+      canvas.height = 128;
+      
+      const ctx = canvas.getContext('2d');
+      ctx.font = fontSpec;
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, 256, 64);
+      
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.minFilter = THREE.LinearFilter;
+      
+      const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthTest: false });
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(w, h, 1);
+      
+      return sprite;
+    }
+
+    function makeLabel2(
+      text,
+      color,
+      fontSpec,
+      w = 2.6,
+      h = 0.65,
+      stroke = null
+    ) {
+      const canvas = document.createElement('canvas');
+      canvas.width = 512;
+      canvas.height = 128;
+
+      const ctx = canvas.getContext('2d');
+      ctx.font = fontSpec;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      // Optional stroke
+      if (stroke) {
+        ctx.lineWidth = 4;
+        ctx.lineJoin = 'round';
+        ctx.strokeStyle = stroke;
+        ctx.strokeText(text, 256, 64);
+      }
+
+      // Fill
+      ctx.fillStyle = color;
+      ctx.fillText(text, 256, 64);
+
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.minFilter = THREE.LinearFilter;
+
+      const mat = new THREE.SpriteMaterial({
+        map: tex,
+        transparent: true,
+        depthTest: false
+      });
+
+      const sprite = new THREE.Sprite(mat);
+      sprite.scale.set(w, h, 1);
+
+      return sprite;
+    }
+
+    function helixPoint(t, phase, R0, yStart, totalH) {
+      const amp = R0 * (1 - t * CONFIG.topTaper);
+      const theta = 2 * Math.PI * 2.5 * t + phase;
+      return new THREE.Vector3(amp * Math.cos(theta), yStart + t * totalH, amp * Math.sin(theta));
+    }
+
+    function sphereMarker(pos, color, r = 0.16) {
+      const geo = new THREE.SphereGeometry(r, 32, 32);
+      const mat = new THREE.MeshStandardMaterial({ 
+        color, 
+        roughness: 0.35, 
+        metalness: 0.1, 
+        emissive: color, 
+        emissiveIntensity: 0.08 
+      });
+      const m = new THREE.Mesh(geo, mat);
+      m.position.copy(pos);
+      return m;
+    }
+
+    function init() {
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0xEDE8DC);
+
+      // --- Height-based fog ---
+      // Three.js's built-in THREE.Fog is purely camera-DISTANCE based, which makes it awkward
+      // to reason about as a "height." This overrides the fog shader chunks globally (affects
+      // every material with `fog: true`, which is the default) so fog is instead driven by
+      // world-space Y — thickest below fogHeightBottom, none at all above fogHeightTop.
+      // We deliberately reuse Three's existing 'fogNear'/'fogFar' uniforms (auto-populated from
+      // scene.fog.near/far) so no extra plumbing is needed — they just mean Y thresholds now,
+      // not distances.
+      THREE.ShaderChunk.fog_vertex = `
+      #ifdef USE_FOG
+        fogDepth = (modelMatrix * vec4(position, 1.0)).y;
+      #endif
+      `;
+      THREE.ShaderChunk.fog_fragment = `
+      #ifdef USE_FOG
+        #ifdef FOG_EXP2
+          float fogFactor = 1.0 - exp( - fogDensity * fogDensity * fogDepth * fogDepth );
+        #else
+          float fogFactor = 1.0 - smoothstep( fogFar, fogNear, fogDepth );
+        #endif
+        gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );
+      #endif
+      `;
+      // near = fogHeightTop (no fog above this), far = fogHeightBottom (fully fogged at/below this)
+      scene.fog = CONFIG.fogEnabled ? new THREE.Fog(CONFIG.fogColor, CONFIG.fogHeightTop, CONFIG.fogHeightBottom) : null;
+      
+      const camera = new THREE.PerspectiveCamera(42, window.innerWidth / window.innerHeight, 0.1, 100);
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      document.body.appendChild(renderer.domElement);
+
+      // vizyon9'dan getirilen ışıklandırma düzeni
+      scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+      const dir1 = new THREE.DirectionalLight(0xffffff, 0.75); dir1.position.set(4, 9, 5); scene.add(dir1);
+      const dir2 = new THREE.DirectionalLight(0xffffff, 0.3);  dir2.position.set(-5, 3, -4); scene.add(dir2);
+
+      // vizyon_final koordinatları ve ölçekleri
+      const R = 2.6;
+      const Y_OCEAN_BOTTOM = -34;   
+      const Y_OCEAN_TOP    = CONFIG.oceanSurfaceY;
+      const Y_START = -1.35;
+      const Y_TOUCH = 0.5;
+      const Y_TOP = 5.4;
+      const totalH = Y_TOP - Y_START;
+      const touchT = (Y_TOUCH - Y_START) / totalH;
+      const LAYER_R = 0.16;          
+      const ABYSS_COLOR = new THREE.Color(0x040B12);
+
+      // IMPORTANT: Y_OCEAN_TOP/BOTTOM, Y_START, Y_TOP etc. are all defined in "local" space —
+      // i.e. before root.position.set(...) shifts the whole scene. Any shader that computes
+      // WORLD-space Y (via modelMatrix) needs this offset added to line up with these constants,
+      // or thresholds like "start darkening at the waterline" end up ~2 units off from where the
+      // water actually visually sits. This was a real bug in the previous version.
+      const ROOT_OFFSET_Y = -(Y_START + Y_TOP) / 2;
+
+      const root = new THREE.Group();
+      scene.add(root);
+
+      // ---- Volumetrik Okyanus Derinlik Duvarı (vizyon9 yapısı) ----
+      const wallRadius = CONFIG.oceanWallRadius;
+      const oceanHeight = Y_OCEAN_TOP - Y_OCEAN_BOTTOM;
+      const wallGeo = new THREE.CylinderGeometry(wallRadius, wallRadius, oceanHeight, 64, 48, true);
+      const posB = wallGeo.attributes.position;
+      const colorArr = new Float32Array(posB.count * 3);
+      const topColor = new THREE.Color(CONFIG.wallTopColor);
+      const bottomColor = new THREE.Color(CONFIG.wallBottomColor);
+      
+      for(let i = 0; i < posB.count; i++) {
+        const localY = posB.getY(i);
+        const t = (localY + oceanHeight / 2) / oceanHeight; // 0 alt .. 1 üst
+        const depthFrac = Math.pow(1 - t, 0.55);
+        const c = topColor.clone().lerp(bottomColor, depthFrac);
+        colorArr[i * 3] = c.r; colorArr[i * 3 + 1] = c.g; colorArr[i * 3 + 2] = c.b;
+      }
+      wallGeo.setAttribute('color', new THREE.BufferAttribute(colorArr, 3));
+      const wallMat = new THREE.MeshStandardMaterial({
+        vertexColors: true, roughness: 0.5, metalness: 0.05,
+        transparent: true, opacity: 0.72, side: THREE.DoubleSide, depthWrite: false
+      });
+
+      // --- Depth-based opacity: the water gets progressively more occluding as it deepens ---
+      // VALID RANGE: 0.0 (fully invisible) to 1.0 (fully opaque) — this is alpha, not percent.
+      wallMat.onBeforeCompile = (shader) => {
+        shader.uniforms.oceanTopY = { value: Y_OCEAN_TOP + ROOT_OFFSET_Y };       // world-space, fixed
+        shader.uniforms.oceanBottomY = { value: Y_OCEAN_BOTTOM + ROOT_OFFSET_Y }; // world-space, fixed
+        shader.uniforms.wallOpacityShallow = { value: CONFIG.wallOpacityShallow };
+        shader.uniforms.wallOpacityDeep = { value: CONFIG.wallOpacityDeep };
+
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            '#include <common>',
+            `#include <common>\n varying float vWallWorldY;`
+          )
+          .replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>\n vWallWorldY = (modelMatrix * vec4(transformed, 1.0)).y;`
+          );
+
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            '#include <common>',
+            `#include <common>\n varying float vWallWorldY;\n uniform float oceanTopY;\n uniform float oceanBottomY;\n uniform float wallOpacityShallow;\n uniform float wallOpacityDeep;`
+          )
+          .replace(
+            '#include <dithering_fragment>',
+            `#include <dithering_fragment>\n float wallDepthT = 1.0 - smoothstep(oceanBottomY, oceanTopY, vWallWorldY);\n gl_FragColor.a = clamp(mix(wallOpacityShallow, wallOpacityDeep, wallDepthT), 0.0, 1.0);`
+          );
+      };
+
+      const wall = new THREE.Mesh(wallGeo, wallMat);
+      wall.position.y = (Y_OCEAN_TOP + Y_OCEAN_BOTTOM) / 2;
+      root.add(wall);
+
+      // ---- Geniş Dalgalı Okyanus Yüzeyi — now a circular disc, not a rectangle ----
+      // A polar grid (concentric rings x angular slices) rather than a square PlaneGeometry,
+      // so there is no straight edge/corner to reveal when the camera turns. Ripple animation
+      // below still works exactly the same way — it only ever reads/writes each vertex's own
+      // x/z (for the sine/cosine phase) and y (the wave height), which this grid provides too.
+      // Manual smoothstep — THREE.MathUtils.smoothstep isn't available in the r128 build this
+      // file loads, so this is inlined rather than relied on.
+      function smoothstep(edge0, edge1, x) {
+        const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
+        return t * t * (3 - 2 * t);
+      }
+
+      function buildOceanDisc(radius, radialSegments, angularSegments) {
+        const ringCount = radialSegments + 1;
+        const sliceCount = angularSegments + 1; // +1 duplicates the seam vertex to close the loop cleanly
+        const positions = new Float32Array(ringCount * sliceCount * 3);
+        const edgeAlpha = new Float32Array(ringCount * sliceCount);
+
+        for (let i = 0; i < ringCount; i++) {
+          const r = radius * (i / radialSegments);
+          // Fade multiplier: 1.0 out to oceanEdgeFadeStart * radius, then eases to 0.0 at the rim.
+          const fadeT = smoothstep(CONFIG.oceanEdgeFadeStart * radius, radius, r);
+          const fade = 1.0 - fadeT;
+          for (let a = 0; a < sliceCount; a++) {
+            const angle = (a / angularSegments) * Math.PI * 2;
+            const idx = i * sliceCount + a;
+            positions[idx * 3]     = r * Math.cos(angle);
+            positions[idx * 3 + 1] = 0;
+            positions[idx * 3 + 2] = r * Math.sin(angle);
+            edgeAlpha[idx] = fade;
+          }
+        }
+
+        const indices = [];
+        for (let i = 0; i < radialSegments; i++) {
+          for (let a = 0; a < angularSegments; a++) {
+            const a0 = i * sliceCount + a;
+            const a1 = a0 + 1;
+            const b0 = a0 + sliceCount;
+            const b1 = b0 + 1;
+            indices.push(a0, b0, a1,  a1, b0, b1);
+          }
+        }
+
+        const geo = new THREE.BufferGeometry();
+        geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+        geo.setAttribute('edgeAlpha', new THREE.BufferAttribute(edgeAlpha, 1));
+        geo.setIndex(indices);
+        geo.computeVertexNormals();
+        return geo;
+      }
+
+      const rippleGeo = buildOceanDisc(
+        CONFIG.oceanSurfaceRadius,
+        CONFIG.oceanSurfaceRadialSegments,
+        CONFIG.oceanSurfaceAngularSegments
+      );
+      // Deeper, more saturated sea-blue + high metalness/low roughness + clearcoat so the
+      // directional lights actually glint off it like a real water surface, instead of it
+      // reading as a flat translucent sheet that blends into the depth wall behind it.
+      const rippleMat = new THREE.MeshPhysicalMaterial({
+        color: CONFIG.waterColor, roughness: CONFIG.waterRoughness, metalness: CONFIG.waterMetalness,
+        clearcoat: 1.0, clearcoatRoughness: 0.08,
+        transparent: true, opacity: CONFIG.waterOpacity, side: THREE.DoubleSide, depthWrite: false, fog: true
+      });
+
+      // Wire the per-vertex edgeAlpha attribute into the fragment alpha, so the disc's outer
+      // ring smoothly dissolves into the background/fog color instead of ending in a hard edge.
+      rippleMat.onBeforeCompile = (shader) => {
+        shader.vertexShader = shader.vertexShader
+          .replace(
+            '#include <common>',
+            `#include <common>\n attribute float edgeAlpha;\n varying float vEdgeAlpha;`
+          )
+          .replace(
+            '#include <begin_vertex>',
+            `#include <begin_vertex>\n vEdgeAlpha = edgeAlpha;`
+          );
+        shader.fragmentShader = shader.fragmentShader
+          .replace(
+            '#include <common>',
+            `#include <common>\n varying float vEdgeAlpha;`
+          )
+          .replace(
+            '#include <dithering_fragment>',
+            `#include <dithering_fragment>\n gl_FragColor.a *= vEdgeAlpha;`
+          );
+      };
+
+      const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+      ripple.position.y = Y_OCEAN_TOP;
+      root.add(ripple);
+
+      const posAttr = rippleGeo.attributes.position;
+      const basePos = posAttr.array.slice();
+
+      // ---- Nesnelerin Yerleşimi (vizyon_final orijinal geometrisi) ----
+      const practicePt = helixPoint(touchT, 0, R, Y_START, totalH);
+      const philosophyPt = helixPoint(touchT, Math.PI, R, Y_START, totalH);
+      
+      root.add(sphereMarker(practicePt, 0xD8CBA0, CONFIG.markerRadius));
+      root.add(sphereMarker(philosophyPt, 0xD8CBA0, CONFIG.markerRadius));
+
+      // Axis was previously a THREE.Line — lines have no true renderable thickness in WebGL
+      // (linewidth is unreliable across browsers/drivers), so it's rebuilt as an actual tube
+      // with a controllable radius. LineCurve3 + TubeGeometry passes exactly through both
+      // endpoints, and — since Philosophy/Practice sit at equal Y and opposite phase on the
+      // same circle — its exact midpoint also lands on the Consciousness sphere.
+      const axisCurve = new THREE.LineCurve3(philosophyPt, practicePt);
+      const axisGeo = new THREE.TubeGeometry(axisCurve, 2, CONFIG.axisRadius, 8, false);
+      const axisMat = new THREE.MeshStandardMaterial({ color: 0x9C8B5E, transparent: true, opacity: 0.35, roughness: 0.6 });
+      root.add(new THREE.Mesh(axisGeo, axisMat));
+
+      const baseFont = '600 40px Inter, sans-serif';
+      const italicFont = 'italic 500 44px Fraunces, serif';
+
+      const lPhil = makeLabel2(
+          'Philosophy', 
+          '#9C5A28',
+          baseFont,
+          2.6,
+          0.65,
+          '#000000'
+      );      
+      lPhil.position.set(philosophyPt.x, philosophyPt.y + 0.42, philosophyPt.z);
+      root.add(lPhil);
+
+      const lPrac = makeLabel2(
+          'Practice',
+          '#d0f2b6',
+          baseFont,
+          2.6,
+          0.65,
+          '#000000'
+      );
+      lPrac.position.set(practicePt.x, practicePt.y + 0.42, practicePt.z);
+      root.add(lPrac);
+
+      const midConsciousPt = new THREE.Vector3(0, Math.max(philosophyPt.y, practicePt.y) + 0.0, 0);
+        root.add(sphereMarker(midConsciousPt, 0xE7DDBD, 0.24));
+      const lConscious = makeLabel('consciousness', '#5FFFFFF', 'italic 400 32px Fraunces, serif', 2.4, 0.55);
+      lConscious.position.copy(midConsciousPt);
+      root.add(lConscious)
+
+      function helixPointTopDown(t, phase, R_base, yTop, totalH) {
+        // t = 0 is the top (Oikos). Radius is tight: R_base * 0.08
+        // t = 1 is the deep bottom. Radius is wide: R_base
+        const amp = R_base * (0.08 + t * 0.92); 
+        
+        // t = 0 starts exactly at the native top phase.
+        // As t grows, it winds downwards.
+        const theta = -2 * Math.PI * 2.5 * t + phase; 
+        
+        // y moves downwards from yTop
+        const y = yTop - t * totalH;
+        
+        return new THREE.Vector3(amp * Math.cos(theta), y, amp * Math.sin(theta));
+      }
+
+      // For t >= 0 (above the surface) this reuses helixPoint EXACTLY — same function call,
+      // not a re-derived copy — so the tube is always guaranteed to pass through Practice/
+      // Philosophy (positioned via that same function) and, with CONFIG.topTaper = 1.0,
+      // converge to a true point at Oikos. Previously RADIAL_GROWTH was applied uniformly
+      // across the whole curve, which desynced the tube from the spheres the moment
+      // RADIAL_GROWTH != 0.92, and caused a sign-flip ("wonky") near the top once it passed 1.0.
+      // For t < 0 (underwater) the vertical rate accelerates with depth (SPACING_GROWTH) and
+      // the radius grows independently (RADIAL_GROWTH) — both continuous with the t=0 boundary.
+      function helixPointDeepSpacing(t, phase, R0, yStart, totalH, growth, radialGrowth) {
+        if (t >= 0) {
+          return helixPoint(t, phase, R0, yStart, totalH);
+        }
+        const theta = 2 * Math.PI * 2.5 * t + phase;
+        const absT = -t;
+        const y = yStart - totalH * (absT + growth * absT * absT / 2);
+        // depthRatio tracks the ACTUAL vertical distance travelled, not the raw t value —
+        // this is what keeps the radial spread consistent regardless of how much SPACING_GROWTH
+        // warps the t-to-depth mapping (fixes the earlier XY-contraction bug).
+        const depthRatio = (yStart - y) / totalH; // == absT exactly when growth = 0
+        const amp = R0 * (1 + depthRatio * radialGrowth);
+        return new THREE.Vector3(amp * Math.cos(theta), y, amp * Math.sin(theta));
+      }
+
+      function buildTube(phase, color) {
+        const pts = [];
+        
+        // 1. Keep the original parameters that defined the top section's perfect shape:
+        const original_Y_START = -1.35;
+        const original_Y_TOP = 5.4;
+        const original_totalH = original_Y_TOP - original_Y_START; // 6.75
+        
+        // 2. Calculate how far down we actually want to go (e.g., to -34.0)
+        const target_Y_BOTTOM = -34.0;
+
+        // How aggressively the vertical spacing loosens with depth, and how fast the spiral
+        // widens outward across X/Z as it descends — both read from CONFIG at the top of the file.
+        const SPACING_GROWTH = CONFIG.spacingGrowth;
+        const RADIAL_GROWTH = CONFIG.radialGrowth;
+
+        // 4. Solve for the t_start that still lands the tube exactly at target_Y_BOTTOM,
+        //    now accounting for the nonlinear (accelerating) spacing below the surface.
+        //    yStart - totalH*(x + growth*x^2/2) = target_Y_BOTTOM  =>  solve for x = -t_start
+        const D = (original_Y_START - target_Y_BOTTOM) / original_totalH; // ~4.84, same distance as before
+        const absT_start = SPACING_GROWTH > 0
+          ? (-1 + Math.sqrt(1 + 2 * SPACING_GROWTH * D)) / SPACING_GROWTH
+          : D;
+        const t_start = -absT_start; // will be a smaller magnitude than the old linear t_start,
+                                      // meaning fewer total rotations to cover the same depth
+        const t_end = 1.0; // 1.0 is always exactly your original Y_TOP (5.4)
+        
+        const stepsN = 5000; // Increase steps because the curve is now much longer
+        
+        for (let i = 0; i <= stepsN; i++) {
+          // Linearly interpolate t between our new deep start point and the fixed top (1.0)
+          const t = t_start + (i / stepsN) * (t_end - t_start);
+          
+          // We pass the original anchors so the math for the top remains untouched
+          pts.push(helixPointDeepSpacing(t, phase, R, original_Y_START, original_totalH, SPACING_GROWTH, RADIAL_GROWTH)); 
+        }
+        
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const geo = new THREE.TubeGeometry(curve, stepsN, CONFIG.tubeRadius, 8, false);
+
+        // CONFIG.tubeOpaque = true: fully solid tube (no fade-to-invisible in the deep, but the
+        // darkening tint below still applies — this is what makes the surface-crossing read as
+        // consistent from every camera angle, per your reasoning about draw order).
+        // CONFIG.tubeOpaque = false: tube ALSO fades to transparent deep in the abyss.
+        const mat = new THREE.MeshStandardMaterial({
+          color, roughness: 0.55,
+          transparent: !CONFIG.tubeOpaque,
+          opacity: CONFIG.tubeOpaque ? 1.0 : CONFIG.tubeOpacity,
+          depthWrite: CONFIG.tubeOpaque ? true : false
+        });
+
+        // --- Depth-based tint: sharp, immediate darkening the instant it crosses the waterline ---
+        // Thresholds are converted to WORLD space with ROOT_OFFSET_Y (see the note near where
+        // that's defined) — previously these compared world-space Y against local-space
+        // constants, so the tint zone sat ~2 units away from where the water actually is.
+        const TINT_START_Y = Y_OCEAN_TOP + ROOT_OFFSET_Y;                    // waterline, world-space
+        const TINT_END_Y   = Y_OCEAN_TOP - CONFIG.tintDepth + ROOT_OFFSET_Y; // fully tinted, world-space
+        const TINT_COLOR   = new THREE.Color(CONFIG.abyssTintColor);
+
+        // --- Depth-based fade (only wired up when CONFIG.tubeOpaque = false) ---
+        const FADE_START_Y = Y_OCEAN_TOP + ROOT_OFFSET_Y;
+        const FADE_END_Y   = Y_OCEAN_BOTTOM + CONFIG.fadeDepthPastFloor + ROOT_OFFSET_Y;
+
+        mat.onBeforeCompile = (shader) => {
+          shader.uniforms.tintStartY = { value: TINT_START_Y };
+          shader.uniforms.tintEndY   = { value: TINT_END_Y };
+          shader.uniforms.tintColor  = { value: TINT_COLOR };
+
+          shader.vertexShader = shader.vertexShader
+            .replace(
+              '#include <common>',
+              `#include <common>\n varying float vWorldY;`
+            )
+            .replace(
+              '#include <begin_vertex>',
+              `#include <begin_vertex>\n vWorldY = (modelMatrix * vec4(transformed, 1.0)).y;`
+            );
+
+          // Darkening tint — always applied, regardless of tubeOpaque.
+          shader.fragmentShader = shader.fragmentShader
+            .replace(
+              '#include <common>',
+              `#include <common>\n varying float vWorldY;\n uniform float tintStartY;\n uniform float tintEndY;\n uniform vec3 tintColor;`
+            )
+            .replace(
+              '#include <color_fragment>',
+              `#include <color_fragment>\n float submergeT = smoothstep(tintEndY, tintStartY, vWorldY);\n diffuseColor.rgb = mix(tintColor, diffuseColor.rgb, submergeT);`
+            );
+
+          // Fade-to-invisible in the deep — only when the tube isn't fully opaque, since
+          // alpha blending has no visible effect on an opaque (non-transparent) material.
+          if (!CONFIG.tubeOpaque) {
+            shader.uniforms.fadeStartY = { value: FADE_START_Y };
+            shader.uniforms.fadeEndY   = { value: FADE_END_Y };
+            shader.fragmentShader = shader.fragmentShader
+              .replace(
+                '#include <common>',
+                `#include <common>\n uniform float fadeStartY;\n uniform float fadeEndY;`
+              )
+              .replace(
+                '#include <dithering_fragment>',
+                `#include <dithering_fragment>\n float depthFade = smoothstep(fadeEndY, fadeStartY, vWorldY);\n gl_FragColor.a *= depthFade;`
+              );
+          }
+        };
+
+        return new THREE.Mesh(geo, mat);
+      }
+/*
+      // ---- Çift Sarmal Yapısı ----
+      const stepsN = 240;
+      function buildTube(phase, color) {
+        const pts = [];
+        for (let i = 0; i <= stepsN; i++) { 
+          //pts.push(helixPoint(i / stepsN, phase, R, Y_START, totalH)); //Y_OCEAN_BOTTOM
+          pts.push(helixPoint(i / stepsN, phase, R*10, Y_OCEAN_BOTTOM, totalH*10));
+
+        }
+        const curve = new THREE.CatmullRomCurve3(pts);
+        const geo = new THREE.TubeGeometry(curve, 280, 0.1, 8, false);
+        const mat = new THREE.MeshStandardMaterial({
+          color, transparent: true, opacity: 0.3, metalness:0.08, roughness: 0.55
+          //side: THREE.DoubleSide
+        });
+        return new THREE.Mesh(geo, mat);
+      }*/
+      root.add(buildTube(0, CONFIG.tubeColorA));
+      root.add(buildTube(Math.PI, CONFIG.tubeColorB));
+
+      // ---- Oikos Merkez Düğümü ----
+      const oikosPos = new THREE.Vector3(0, Y_TOP, 0);
+      const oikosSphere = new THREE.Mesh(
+        new THREE.SphereGeometry(0.56, 48, 48),
+        new THREE.MeshStandardMaterial({ color: 0xEDE8DC, roughness: 0.35, metalness: 0.05, emissive: 0x3B4353, emissiveIntensity: 0.06 })
+      );
+      oikosSphere.position.copy(oikosPos);
+      root.add(oikosSphere);
+
+      const ring = new THREE.Mesh(
+        new THREE.TorusGeometry(0.56, 0.012, 8, 64),
+        new THREE.MeshStandardMaterial({ color: 0x3B4353, roughness: 0.5 })
+      );
+      ring.position.copy(oikosSphere.position);
+      ring.rotation.x = Math.PI / 2.3;
+      root.add(ring);
+
+      const lOikos = makeLabel('Oikos', '#2B271F', italicFont, 2.0, 0.5);
+      lOikos.position.set(0, Y_TOP + 0.2, 0);
+      root.add(lOikos);
+
+      const lUncons = makeLabel('unconscious', '#EAF2F5', 'italic 400 34px Fraunces, serif', 3.0, 0.6);
+      lUncons.position.set(0, Y_OCEAN_TOP+0.5, 3.65);
+      root.add(lUncons);
+
+      root.position.set(0, ROOT_OFFSET_Y, 0);
+
+      // --- Kamera Kontrolleri ---
+      let radius = 10.5, theta = Math.PI / 3.2, phi = Math.PI / 2.3;
+      const target = new THREE.Vector3(0, 1, 0);
+      const minR = 5.5, maxR = 18;
+
+      function updateCamera() {
+        camera.position.x = target.x + radius * Math.sin(phi) * Math.sin(theta);
+        camera.position.z = target.z + radius * Math.sin(phi) * Math.cos(theta);
+        camera.position.y = target.y + radius * Math.cos(phi);
+        camera.lookAt(target);
+      }
+      updateCamera();
+
+      // --- Etkileşim Olayları ---
+      let dragging = false, lastX = 0, lastY = 0, autoRotate = true;
+      const dom = renderer.domElement;
+
+      dom.addEventListener('pointerdown', e => { 
+        dragging = true; 
+        autoRotate = false; 
+        lastX = e.clientX; 
+        lastY = e.clientY; 
+        dom.setPointerCapture(e.pointerId); 
+      });
+      dom.addEventListener('pointerup', () => dragging = false);
+      dom.addEventListener('pointerleave', () => dragging = false);
+      
+      dom.addEventListener('pointermove', e => {
+        if (!dragging) return;
+        const dx = e.clientX - lastX, dy = e.clientY - lastY;
+        lastX = e.clientX; 
+        lastY = e.clientY;
+        
+        theta -= dx * 0.006; 
+        phi -= dy * 0.006;
+        phi = Math.max(0.25, Math.min(Math.PI - 0.25, phi));
+        
+        updateCamera();
+      });
+
+      dom.addEventListener('wheel', e => {
+        e.preventDefault();
+        radius += e.deltaY * 0.01;
+        radius = Math.max(minR, Math.min(maxR, radius));
+        updateCamera();
+      }, { passive: false });
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // --- Animasyon Döngüsü ---
+      const clock = new THREE.Clock();
+      
+      function animate() {
+        requestAnimationFrame(animate);
+        const t = clock.getElapsedTime();
+        
+        // Geniş okyanus yüzeyinin (ripple) vizyon9 stilindeki dalga hesabı
+        if (CONFIG.waveEnabled) {
+          const freqX = CONFIG.waveFrequency;
+          const freqZ = CONFIG.waveFrequency * 0.78;  // slightly different so waves aren't perfectly symmetric
+          const speedX = CONFIG.waveSpeed;
+          const speedZ = CONFIG.waveSpeed * 0.71;
+          for (let i = 0; i < posAttr.count; i++) {
+            const ix = i * 3;
+            const x = basePos[ix], z = basePos[ix + 2];
+            posAttr.array[ix + 1] = Math.sin(x * freqX + t * speedX) * CONFIG.waveAmplitude
+                                   + Math.cos(z * freqZ + t * speedZ) * CONFIG.waveAmplitude;
+          }
+          posAttr.needsUpdate = true;
+          rippleGeo.computeVertexNormals();
+        }
+
+        if (autoRotate) { 
+          theta += 0.0006; 
+          updateCamera(); 
+        }
+        
+        renderer.render(scene, camera);
+      }
+      
+      animate();
+    }
+  </script>
+</body>
+</html>
