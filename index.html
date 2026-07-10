@@ -1258,6 +1258,20 @@
     } else {
       initLandCalc();
     }
+
+    // Tapping anywhere else on the page (outside the ocean visualization
+    // iframe) tells that iframe to drop back into "scroll mode" — touches
+    // that land inside the iframe never bubble up to this listener, so this
+    // only fires for genuine taps elsewhere on the page.
+    (function(){
+      var oceanFrame = document.getElementById('iframe-ocean-vizyon');
+      if (!oceanFrame) return;
+      document.addEventListener('touchstart', function(){
+        if (oceanFrame.contentWindow) {
+          oceanFrame.contentWindow.postMessage('nova-stoa-disengage-vizyon', '*');
+        }
+      }, { passive: true });
+    })();
   })();
 </script>
 </body>
