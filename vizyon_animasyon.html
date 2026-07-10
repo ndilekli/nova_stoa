@@ -160,6 +160,10 @@
     // directly; everything below reads from this object.
     // ============================================================
     const CONFIG = {
+      // --- Camera ---
+      autoRotateSpeed: 0.001, // radians added per frame while idle (~60fps).
+                                // 0.0006 ≈ 4.5 min/rotation. Lower = slower, higher = faster.
+
       // --- Fog (height-based — see the ShaderChunk override near the top of init()) ---
       fogEnabled: true,        // set false to turn fog off entirely
       fogColor:   0xEDE8DC,
@@ -942,7 +946,7 @@
         }
 
         if (autoRotate) { 
-          theta += 0.0006; 
+          theta += CONFIG.autoRotateSpeed; 
           updateCamera(); 
         }
         
