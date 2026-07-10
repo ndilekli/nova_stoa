@@ -149,6 +149,10 @@
     </div>
   </div>
 
+  <div id="debugHud" style="display:none; position:fixed; bottom:10px; left:10px; z-index:30;
+       font-family:monospace; font-size:12px; line-height:1.5; color:#fff;
+       background:rgba(0,0,0,0.55); padding:8px 10px; border-radius:4px; white-space:pre;"></div>
+
   <script>
     document.fonts.load('600 40px Inter')
       .then(() => document.fonts.load('italic 500 40px Fraunces'))
@@ -160,8 +164,15 @@
     // directly; everything below reads from this object.
     // ============================================================
     const CONFIG = {
+      // --- Debug ---
+      debugHud: false, // set true to show a live FPS / measured rotation-speed
+                        // readout in the corner — flip this on to compare the
+                        // real numbers between devices instead of eyeballing it.
+
       // --- Camera ---
-      autoRotateSpeed: 0.004, // radians added per frame while idle (~60fps).
+      autoRotateSpeed: 0.001, // radians added per frame, normalized to ~60fps.
+                                // Now frame-rate independent — same visual speed
+                                // on 30fps and 120fps devices alike.
                                 // 0.0006 ≈ 4.5 min/rotation. Lower = slower, higher = faster.
 
       // --- Fog (height-based — see the ShaderChunk override near the top of init()) ---
@@ -924,7 +935,10 @@
 
       // --- Animasyon Döngüsü ---
       const clock = new THREE.Clock();
-      
+      const debugHud = document.getElementById('debugHud');
+      if (CONFIG.debugHud) debugHud.style.display = 'block';
+      let hudAccumTime = 0, hudAccumFrames = 0, hudThetaStart = theta, hudTimeStart = 0;
+
       function animate() {
         requestAnimationFrame(animate);
         const delta = clock.getDelta();
@@ -952,6 +966,21 @@
         }
         
         renderer.render(scene, camera);
+
+        if (CONFIG.debugHud) {
+          hudAccumTime += delta;
+          hudAccumFrames++;
+          if (hudAccumTime >= 1) { // refresh readout once per second
+            const measuredDegPerSec = ((theta - hudThetaStart) / (t - hudTimeStart)) * (180 / Math.PI);
+            const fps = hudAccumFrames / hudAccumTime;
+            debugHud.textContent =
+              'fps: ' + fps.toFixed(1) +
+              '\nrot: ' + measuredDegPerSec.toFixed(2) + ' deg/s' +
+              '\nautoRotate: ' + autoRotate;
+            hudAccumTime = 0; hudAccumFrames = 0;
+            hudThetaStart = theta; hudTimeStart = t;
+          }
+        }
       }
       
       animate();
