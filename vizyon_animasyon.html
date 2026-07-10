@@ -161,7 +161,9 @@
     // ============================================================
     const CONFIG = {
       // --- Camera ---
-      autoRotateSpeed: 0.001, // radians added per frame while idle (~60fps).
+      autoRotateSpeed: 0.003, // radians added per frame, normalized to ~60fps.
+                                // Now frame-rate independent — same visual speed
+                                // on 30fps and 120fps devices alike.
                                 // 0.0006 ≈ 4.5 min/rotation. Lower = slower, higher = faster.
 
       // --- Fog (height-based — see the ShaderChunk override near the top of init()) ---
@@ -927,7 +929,8 @@
       
       function animate() {
         requestAnimationFrame(animate);
-        const t = clock.getElapsedTime();
+        const delta = clock.getDelta();
+        const t = clock.elapsedTime; // equivalent to the old clock.getElapsedTime()
         
         // Geniş okyanus yüzeyinin (ripple) vizyon9 stilindeki dalga hesabı
         if (CONFIG.waveEnabled) {
@@ -946,7 +949,7 @@
         }
 
         if (autoRotate) { 
-          theta += CONFIG.autoRotateSpeed; 
+          theta += CONFIG.autoRotateSpeed * delta * 60; // normalized to ~60fps so speed is frame-rate independent
           updateCamera(); 
         }
         
