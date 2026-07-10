@@ -161,9 +161,7 @@
     // ============================================================
     const CONFIG = {
       // --- Camera ---
-      autoRotateSpeed: 0.003, // radians added per frame, normalized to ~60fps.
-                                // Now frame-rate independent — same visual speed
-                                // on 30fps and 120fps devices alike.
+      autoRotateSpeed: 0.004, // radians added per frame while idle (~60fps).
                                 // 0.0006 ≈ 4.5 min/rotation. Lower = slower, higher = faster.
 
       // --- Fog (height-based — see the ShaderChunk override near the top of init()) ---
