@@ -310,8 +310,8 @@
   <h2 class="tab-h">Felsefe ve sahne sanatları üzerine kurulu bir kırsal kampüs</h2>
   <p class="lede">Nova Stoa, Bursa kırsalında 10 dönümlük bir arazi üzerinde kurulacak; Nesin Köyü, Arché Projesi ve Foça Bilimler Köyü'nün faaliyet mantığından beslenen bir felsefe-sanat enstitüsüdür.</p>
   <p>Kurumun fikrî çekirdeği iki daimi eksenden oluşur: <strong>Stoa felsefesi</strong> — <em>oikeiosis</em> kavramını temel bir platform olarak konumlandıran — ve <strong>sahne/drama sanatları</strong> — Eric Morris'in "yapmak" değil "olmak" yaklaşımından beslenen. Bu iki eksen üzerine Jungcu psikoloji, tasavvufi/mistik gelenekler, temel bilimler (fizik, evrim) ve sosyal bilimler dönüşümlü olarak eklenir. Stoacılık burada baskın bir çerçeve değil; "gerçekliği ve kendi tabiatını arama" arayışının ortak zemini olarak konumlanır — diğer gelenekler eşit ortaklar olarak bu zemine eklenir, ona tabi olarak değil.</p>
-  <p>Kampüste kurucular (bir tiyatro pratisyeni dahil olmak üzere) ve ayrıca bir felsefe hocası rezidan olarak yer alacak. Kadro modeli şöyledir: programın yaklaşık üçte birini kapsayan daimi bir fakülte, (tercihen tez yazım/analiz aşamasındaki bir doktora adayları / doktora sonrası araştırmacısı), Arche'de olduğu gibi sembolik burs + oda-pansiyon karşılığında yarı zamanlı ders veren — resident scholar havuzu.</p>
-  <p>Bu kampüsün amacı Vizyon dokümanında tartışıldığı gibi bilinç seviyesini yükseltmektir. Bu amaç ile kampın içeriği ve ruhu ile tutarlı olduğunu düşündüğümüz bazı makul ölçekte kurallar vardır. Katılımcıların asgari olarak diz boyu şort ve kısa kollu bir tshirt giymeleri beklenir. Alkol kullanımı için haftanın bir günü belirlenecektir, mesela çarşamba öğleden sonra. Dikkat dağılmasını önlemek için katılımcılardan odalar ve çadırlar haricinde telefon kullanmamalarını bekliyoruz. Yine çok olan değersizdir düşüncesine uyumlu bir şekilde kampüste fotoğraf çekilmemesini bekliyoruz ve sadece kampüsün son günü tek bir grup resmi çekilebileceğini ifade ediyoruz.</p>
+  <p>Kampüste kurucular (bir tiyatro pratisyeni dahil olmak üzere) ve ayrıca bir felsefe hocası rezidan olarak yer alacak. Kadro modeli şöyledir: programın yaklaşık üçte birini kapsayan daimi bir fakülte, (tercihen tez yazım/analiz aşamasındaki bir doktora adayları / doktora sonrası araştırmacısı), Arche'de olduğu gibi sembolik burs + oda-pansiyon karşılığında yarı zamanlı ders veren — resident scholar havuzu. Yıl genelinde 40 haftanın yaklaşık üçte biri (13 hafta) tamamen kurucu kadroyla, kalan 27 hafta ise davetli hoca ağıyla yürütülür — bu dengenin tam kırılımına Ders Programı sekmesinden ulaşılabilir.</p>
+  <p>Bu kampüsün amacı Vizyon dokümanında tartışıldığı gibi bilinç seviyesini yükseltmektir. Bu amaç ile kampın içeriği ve ruhu ile tutarlı olduğunu düşündüğümüz bazı makul ölçekte kurallar vardır. Katılımcıların asgari olarak diz boyu şort ve kısa kollu bir tshirt giymeleri beklenir. Alkol kullanımı için haftanın bir günü belirlenecektir, mesela çarşamba öğleden sonra. Dikkat dağılmasını önlemek için katılımcılardan odalar ve çadırlar haricinde telefon kullanmamalarını bekliyoruz. Yine çok olan değersizdir düşüncesine uyumlu bir şekilde kampüste fotoğraf çekilmemesini bekliyoruz ve sadece kampüsün son günü tek bir grup resmi çekilebileceğini ifade ediyoruz. Bu kurallar keyfi bir disiplin listesi değil; halvet ve tanıklık deneyiminin korunması için gereken asgari çerçevedir — amaç yasak koymak değil, dikkatin dağılmadan kendi tabiatına yönelebileceği bir ortam kurmaktır.</p>
 
   <div class="card-grid">
     <div class="card">
@@ -1258,20 +1258,6 @@
     } else {
       initLandCalc();
     }
-
-    // Tapping anywhere else on the page (outside the ocean visualization
-    // iframe) tells that iframe to drop back into "scroll mode" — touches
-    // that land inside the iframe never bubble up to this listener, so this
-    // only fires for genuine taps elsewhere on the page.
-    (function(){
-      var oceanFrame = document.getElementById('iframe-ocean-vizyon');
-      if (!oceanFrame) return;
-      document.addEventListener('touchstart', function(){
-        if (oceanFrame.contentWindow) {
-          oceanFrame.contentWindow.postMessage('nova-stoa-disengage-vizyon', '*');
-        }
-      }, { passive: true });
-    })();
   })();
 </script>
 </body>
